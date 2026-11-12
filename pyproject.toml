@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "furbybots"
+version = "0.1.0"
+description = "Self-hosted X poster for the Queen of Furbies"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "requests>=2.31",
+  "requests-oauthlib>=1.3",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8",
+  "responses>=0.25",
+]
+
+[tool.setuptools.packages.find]
+include = ["furbybots*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

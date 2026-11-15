@@ -1,8 +1,8 @@
 """User-context client for X API v2.
 
-Endpoints used here are ``GET /2/users/me`` and ``POST /2/tweets``.
-``create_tweet`` accepts ``in_reply_to`` so a copied bot can continue a thread.
-Reading replies (recent search) is intentionally not included.
+Endpoints used here are ``GET /2/users/me``, ``GET /2/tweets/search/recent``,
+and ``POST /2/tweets``. ``create_tweet`` accepts ``in_reply_to`` so a bot can
+reply in a thread. ``search_recent`` reads one page and does not page further.
 """
 
 from __future__ import annotations
@@ -82,6 +82,25 @@ class XClient:
             raise XApiError(200, "POST /2/tweets did not return a post id.")
         return str(data["id"])
 
+    def search_recent(self, query: str, *, max_results: int = 10) -> list[SearchPost]:
+        """Return one page of recent posts. ``max_results`` is kept between 10 and 100."""
+        bounded = min(100, max(10, max_results))
+        payload = self._request(
+            "GET",
+            f"{API_BASE}/tweets/search/recent",
+            params={
+                "query": query,
+                "max_results": bounded,
+                "tweet.fields": (
+                    "id,text,author_id,created_at,public_metrics,"
+                    "referenced_tweets,possibly_sensitive"
+                ),
+                "expansions": "author_id",
+                "user.fields": "id,username",
+            },
+        )
+        return _parse_search(payload)
+
     def _request(self, method: str, url: str, **kwargs: object) -> dict:
         try:
             response = self.session.request(
@@ -99,7 +118,7 @@ class XClient:
                 "X redirected this request instead of answering it.",
             )
         if response.status_code >= 400:
-            raise self._http_error(response)
+            raise self._http_error(response, url)
         try:
             payload = response.json()
         except ValueError as exc:
@@ -111,9 +130,32 @@ class XClient:
             raise XApiError(response.status_code, "X returned an unexpected response.")
         return payload
 
-    def _http_error(self, response: requests.Response) -> XApiError:
+    def _http_error(self, response: requests.Response, url: str) -> XApiError:
         detail = _detail(response, self._secrets)
         status = response.status_code
+        searching = "/tweets/search/" in url
+        if status == 429 and searching:
+            reset = response.headers.get("x-rate-limit-reset", "")
+            wait = (
+                f" The limit resets at unix time {reset}."
+                if reset
+                else " Wait and try again later."
+            )
+            return XApiError(
+                429,
+                "Recent search was rate limited (HTTP 429)."
+                + wait
+                + " Nothing was posted."
+                + detail,
+            )
+        if status == 403 and searching:
+            return XApiError(
+                403,
+                "Recent search refused this request (HTTP 403). "
+                "GET /2/tweets/search/recent needs to be available on this "
+                "app's X API plan. Nothing was posted."
+                + detail,
+            )
         if status == 429:
             reset = response.headers.get("x-rate-limit-reset", "")
             wait = (
@@ -138,6 +180,67 @@ class XClient:
                 + detail,
             )
         return XApiError(status, f"X returned HTTP {status}." + detail)
+
+
+@dataclass(frozen=True)
+class SearchPost:
+    id: str
+    text: str
+    author_id: str
+    username: str
+    created_at: str = ""
+    like_count: int = 0
+    retweet: bool = False
+    reply: bool = False
+    sensitive: bool = False
+
+
+def _parse_search(payload: dict) -> list[SearchPost]:
+    rows = payload.get("data") or []
+    if not isinstance(rows, list):
+        return []
+    users: dict[str, str] = {}
+    includes = payload.get("includes")
+    if isinstance(includes, dict):
+        listed = includes.get("users") or []
+        if isinstance(listed, list):
+            for user in listed:
+                if isinstance(user, dict) and user.get("id"):
+                    users[str(user["id"])] = str(user.get("username") or "").lstrip("@")
+    posts: list[SearchPost] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        post_id = str(row.get("id") or "")
+        text = str(row.get("text") or "")
+        if not post_id or not text:
+            continue
+        author_id = str(row.get("author_id") or "")
+        metrics = row.get("public_metrics") if isinstance(row.get("public_metrics"), dict) else {}
+        try:
+            likes = int(metrics.get("like_count") or 0)
+        except (TypeError, ValueError):
+            likes = 0
+        kinds: set[str] = set()
+        refs = row.get("referenced_tweets") or []
+        if isinstance(refs, list):
+            for ref in refs:
+                if isinstance(ref, dict) and ref.get("type"):
+                    kinds.add(str(ref["type"]))
+        posts.append(
+            SearchPost(
+                id=post_id,
+                text=text,
+                author_id=author_id,
+                username=users.get(author_id, ""),
+                created_at=str(row.get("created_at") or ""),
+                like_count=likes,
+                retweet="retweeted" in kinds or text.startswith("RT @"),
+                reply="replied_to" in kinds,
+                sensitive=bool(row.get("possibly_sensitive")),
+            )
+        )
+    return posts
 
 
 def _detail(response: requests.Response, secrets: list[str]) -> str:

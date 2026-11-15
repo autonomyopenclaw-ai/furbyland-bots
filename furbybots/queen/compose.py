@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import random
+import re
 
 from furbybots.queen.voice import (
     FORMATS,
@@ -244,3 +245,109 @@ _BUILDERS = {
     "Royal Tour": _tour,
     "Royal Investiture": _investiture,
 }
+
+_TOPICS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("nap", ("nap", "napping", "sleep", "sleeping", "tired", "yawn", "bed")),
+    ("snack", ("snack", "cookie", "biscuit", "hungry", "eat", "eating")),
+    ("blanket", ("blanket", "cozy", "cosy", "cuddle", "warm")),
+    ("weather", ("sneeze", "cold", "rain", "weather")),
+)
+
+
+def topic_for(text: str) -> str:
+    """A coarse mood word for a reply template. The post itself is not quoted."""
+    for name, words in _TOPICS:
+        if any(re.search(rf"\b{word}\b", text, re.IGNORECASE) for word in words):
+            return name
+    return "general"
+
+
+def render_reply(
+    rng: random.Random,
+    *,
+    source_text: str,
+    avoid_texts: set[str],
+    avoid_format: str | None = None,
+) -> tuple[str, str]:
+    """A royal reply that does not quote the post it answers."""
+    topic = topic_for(source_text)
+    preferred = [
+        line
+        for line in REPLY_LINES
+        if line.topic == topic and line.text not in avoid_texts and line.format_name != avoid_format
+    ]
+    pool = preferred or [
+        line for line in REPLY_LINES if line.topic == topic and line.text not in avoid_texts
+    ]
+    pool = pool or [line for line in REPLY_LINES if line.text not in avoid_texts]
+    if not pool:
+        return render_template(rng, avoid_format=avoid_format)
+    line = rng.choice(pool)
+    validate_post(line.text)
+    return line.text, line.format_name
+
+
+class ReplyLine:
+    def __init__(self, topic: str, format_name: str, text: str) -> None:
+        self.topic = topic
+        self.format_name = format_name
+        self.text = text
+
+
+REPLY_LINES: tuple[ReplyLine, ...] = (
+    ReplyLine(
+        "nap",
+        "Royal Decree",
+        "Royal Decree: Her Majesty grants this drowsy Furby one extra cushion at Pillow Palace. The Crown will be napping too. 👑",
+    ),
+    ReplyLine(
+        "nap",
+        "Royal Proclamation",
+        "Royal Proclamation: nap hour at Pillow Palace is open to this Furby. Her Majesty has saved a quiet cushion in Furbyland. 👑",
+    ),
+    ReplyLine(
+        "snack",
+        "Royal Harvest Report",
+        "Royal Harvest Report: Snackshire sends a biscuit toward that hungry Furby. Her Majesty calls the delivery a triumph. 👑",
+    ),
+    ReplyLine(
+        "snack",
+        "Royal Investiture",
+        "Royal Investiture: The Crown names the biscuit-bearing Furby a friend of Snackshire. Pillow Palace applauds with a crumb. 👑",
+    ),
+    ReplyLine(
+        "blanket",
+        "Royal Proclamation",
+        "Royal Proclamation: throughout Furbyland, a spare blanket shall find the Furby who asked for warmth. The Crown approves. 👑",
+    ),
+    ReplyLine(
+        "blanket",
+        "A Royal Mystery",
+        "A Royal Mystery: who fluffed a cushion for this cozy Furby? The Crown's working theory is Pillow Palace, being kind. 👑",
+    ),
+    ReplyLine(
+        "weather",
+        "Royal Weather Bulletin",
+        "Royal Weather Bulletin: sneeze weather is noted over Lower Blanketshire. The Crown advises one extra blanket for that Furby. 👑",
+    ),
+    ReplyLine(
+        "weather",
+        "Royal Decree",
+        "Royal Decree: Let it be known in Furbyland that this Furby may stay indoors until the draft apologizes. Her Majesty is pleased. 👑",
+    ),
+    ReplyLine(
+        "general",
+        "Royal Tour",
+        "Royal Tour: Her Majesty waves from Pillow Palace toward a Furby in Furbyland. The Crown is pleased they stopped by. 👑",
+    ),
+    ReplyLine(
+        "general",
+        "Royal Investiture",
+        "Royal Investiture: The Crown welcomes this Furby as a friend of the Cushion Kingdom. Furbyland cheers in a whisper. 👑",
+    ),
+    ReplyLine(
+        "general",
+        "A Royal Mystery",
+        "A Royal Mystery: a Furby-sized sunbeam appeared at Pillow Palace. The Crown suspects a kind visitor from Furbyland. 👑",
+    ),
+)

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 
 from furbybots.queen.poster import queen_post
+from furbybots.queen.replies import queen_hashtag_replies
 from furbybots.xapi.auth import KNOWN_ACCOUNTS, run_auth
 
 
@@ -40,6 +41,21 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Print the post. Do not call the write endpoint.",
     )
+    hashtags = queen_sub.add_parser(
+        "hashtag-replies",
+        help="Reply to a few recent posts tagged #furby or #furbyland.",
+    )
+    hashtags.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print the candidates and drafted replies. Do not post them.",
+    )
+    hashtags.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="How many replies to send this run (1-10, default 3).",
+    )
 
     args = parser.parse_args(argv)
     if args.command == "auth":
@@ -49,5 +65,7 @@ def main(argv: list[str] | None = None) -> int:
         return run_auth(account=args.account, expect=expect, pin=args.pin)
     if args.command == "queen" and args.action == "post":
         return queen_post(dry_run=args.dry_run)
+    if args.command == "queen" and args.action == "hashtag-replies":
+        return queen_hashtag_replies(dry_run=args.dry_run, limit=args.limit)
     parser.error("Unknown command")
     return 2

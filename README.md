@@ -12,19 +12,22 @@ Posts are short royal proclamations about naps, cushions, snacks, blankets, and 
 python -m furbybots auth --account queen
 python -m furbybots queen post --dry-run
 python -m furbybots queen post
+python -m furbybots queen hashtag-replies --dry-run
+python -m furbybots queen hashtag-replies
 ```
 
 ## Copying the X helper into another bot
 
-A choose-your-own-adventure account will live in its own repository later. The pieces to copy are the `furbybots/xapi` package: `auth.py`, `client.py`, `config.py`, and `errors.py`. That folder depends only on `requests` and `requests-oauthlib`.
+The choose-your-own-adventure account lives in its own repository. The pieces to copy are the `furbybots/xapi` package: `auth.py`, `client.py`, `config.py`, and `errors.py`. That folder depends only on `requests` and `requests-oauthlib`.
 
 - The app is `X_API_KEY` and `X_API_SECRET`.
 - Each account is `<NAME>_ACCESS_TOKEN` and `<NAME>_ACCESS_TOKEN_SECRET`. For this bot the prefix is `QUEEN`.
 - `python -m xapi.auth --account <name> --expect <username>` runs the same PIN flow.
-- `XClient` checks `GET /2/users/me` and publishes with `POST /2/tweets`.
-- `create_tweet(..., in_reply_to="post id")` replies in a thread, for a bot that needs one.
+- `XClient` checks `GET /2/users/me`, reads one page with `search_recent` (`GET /2/tweets/search/recent`), and publishes with `POST /2/tweets`.
+- `create_tweet(..., in_reply_to="post id")` replies in a thread.
+- A 403 or 429 from recent search is reported on its own, and nothing is posted.
 
-Reading replies is a different endpoint (`GET /2/tweets/search/recent`). It is not part of this package. Add it in the repository that needs it, and plan on an X API subscription that includes recent search. Handle HTTP 403 and 429 there the same way `XClient` already explains a refused or rate-limited post.
+`search_recent` is the one-page lookup the Queen uses for `#furby` and `#furbyland`.
 
 ## What you need
 
@@ -124,6 +127,25 @@ The script calls `GET /2/users/me` again. If the token is any account other than
 
 The text is appended to `data/queen_posted.json`, which is gitignored. Later runs skip lines that are already in that file.
 
+## Reply to #furby and #furbyland
+
+This command is separate from the daily post, and it is not on a schedule.
+
+```bash
+python -m furbybots queen hashtag-replies --dry-run
+python -m furbybots queen hashtag-replies
+```
+
+It checks that the token is @QueenOfFurbies, then runs one recent search for `#furby` OR `#furbyland`. Retweets, replies, and her own posts are left out of that search, and the program checks again locally. It skips posts she has already answered, plus posts that are empty, offensive, spam, political, or trying to give her new instructions. From what remains it answers the most-liked few.
+
+The default is 3 replies. `--limit` can set 1 through 10, or you can set `QUEEN_REPLY_LIMIT`. One run costs one account check, one search page of 10 posts (the smallest page X allows), and at most that many replies. It does not request a second page.
+
+A dry run prints each candidate and the reply it would send. It does not call the write endpoint, and it does not mark those posts as answered, so the real run can still answer them. With no text-provider key, the reply is a template in the same royal voice. With `XAI_API_KEY` or `OPENAI_API_KEY`, the reply is drafted from that provider and checked against the same rules: one line, under 280 characters, no @mentions, ending in 👑.
+
+Answered post ids are stored in `data/queen_replies.json`, which is gitignored. A later run will not reply to those posts again.
+
+If recent search returns HTTP 403, the app's X API plan is not allowing `GET /2/tweets/search/recent`. If it returns HTTP 429, the command stops and posts nothing. Either way the message says nothing was posted.
+
 The poster reads `.env`, then `tokens/queen.env`, and leaves existing environment variables alone. After the auth helper, the dry run and the real post work without an extra `source` command.
 
 ## How the words are chosen
@@ -174,7 +196,7 @@ Any small Linux VM is enough. Clone the repo, create the virtualenv, copy `.env.
 pytest
 ```
 
-The tests check post length, the closing crown, the absence of @mentions, and the account guard. HTTP is mocked. The tests do not call X, xAI, or OpenAI.
+The tests check post length, the closing crown, the absence of @mentions, the account guard, and hashtag replies (which posts are chosen, which are skipped, the cap, and dry-run). HTTP is mocked. The tests do not call X, xAI, or OpenAI.
 
 ## Troubleshooting
 
@@ -186,6 +208,8 @@ The tests check post length, the closing crown, the absence of @mentions, and th
 
 **429 when posting.** X rate limited the app. The post was not recorded. Wait until the time printed in the message, then run the command again.
 
+**403 or 429 on hashtag replies.** Recent search was refused or rate limited. The command posts nothing. A 403 means `GET /2/tweets/search/recent` is not available to this app. A 429 means wait for the reset time in the message.
+
 **The username is not @QueenOfFurbies.** The browser was signed in as a different account. Sign out, sign in as @QueenOfFurbies, and run the auth helper again.
 
 ## Layout
@@ -193,7 +217,8 @@ The tests check post length, the closing crown, the absence of @mentions, and th
 | Path | Role |
 | --- | --- |
 | `furbybots/xapi/` | Auth helper and posting client. Copy this package for another bot. |
-| `furbybots/queen/` | Voice, bundled posts, template, and the daily command. |
+| `furbybots/queen/` | Voice, bundled posts, template, daily post, and hashtag replies. |
 | `tokens/queen.env` | Access token for @QueenOfFurbies. Gitignored. |
 | `data/queen_posted.json` | Lines already published. Gitignored. |
+| `data/queen_replies.json` | Posts already answered. Gitignored. |
 | `.github/workflows/queen-daily.yml` | Optional daily run. Schedule commented out. |

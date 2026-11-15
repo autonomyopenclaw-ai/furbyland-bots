@@ -47,8 +47,14 @@ class LLMWriter:
         self.session = session or requests.Session()
         self.timeout = timeout
 
-    def write(self, *, avoid: list[str], last_format: str | None) -> str:
-        notes = ["Write today's single post."]
+    def write(
+        self,
+        *,
+        avoid: list[str],
+        last_format: str | None,
+        instruction: str | None = None,
+    ) -> str:
+        notes = [instruction or "Write today's single post."]
         if last_format:
             notes.append(f"The previous format was {last_format}. Choose a different format.")
         if avoid:

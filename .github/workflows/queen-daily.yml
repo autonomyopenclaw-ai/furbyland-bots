@@ -1,0 +1,52 @@
+name: Queen of Furbies daily post
+
+# The daily schedule is commented out on purpose.
+# Merging this file does not post. To turn the daily post on:
+# 1. Add the repository secrets listed below (see the README).
+# 2. Uncomment the schedule block.
+# workflow_dispatch posts for real. Use it only after the secrets exist.
+on:
+  workflow_dispatch:
+  # schedule:
+  #   - cron: "0 15 * * *" # 15:00 UTC every day
+
+permissions:
+  contents: read
+
+concurrency:
+  group: queen-of-furbies-post
+  cancel-in-progress: false
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: pip install .
+
+      - name: Restore the list of posts already sent
+        uses: actions/cache@v4
+        with:
+          path: data
+          key: queen-posted-${{ github.run_id }}
+          restore-keys: |
+            queen-posted-
+
+      - name: Post as @QueenOfFurbies
+        env:
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          QUEEN_ACCESS_TOKEN: ${{ secrets.QUEEN_ACCESS_TOKEN }}
+          QUEEN_ACCESS_TOKEN_SECRET: ${{ secrets.QUEEN_ACCESS_TOKEN_SECRET }}
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          XAI_MODEL: ${{ secrets.XAI_MODEL }}
+          OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
+        run: python -m furbybots queen post

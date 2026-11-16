@@ -129,7 +129,7 @@ The text is appended to `data/queen_posted.json`, which is gitignored. Later run
 
 ## Reply to #furby and #furbyland
 
-This command is separate from the daily post, and it is not on a schedule.
+This command is separate from the daily proclamation. A daily run posts the replies; the dry-run workflow does not.
 
 ```bash
 python -m furbybots queen hashtag-replies --dry-run
@@ -142,7 +142,7 @@ The default is 3 replies. `--limit` can set 1 through 10, or you can set `QUEEN_
 
 A dry run prints each candidate and the reply it would send, and the log says `template` or `LLM` for each one. It does not call the write endpoint, and it does not mark those posts as answered, so the real run can still answer them. With no text-provider key, the reply is a template in the same royal voice, and the log says so. With `XAI_API_KEY` or `OPENAI_API_KEY`, the reply answers what that post said, in the Queen's voice, and the log says LLM. The same rules still apply: one line, under 280 characters, no @mentions, ending in 👑.
 
-Answered post ids are stored in `data/queen_replies.json`, which is gitignored. A later run will not reply to those posts again.
+Answered post ids are stored in `data/queen_replies.json`. That file is kept in git. The daily workflow commits it back to the branch it ran on, so the next run can see which posts were already answered. The daily proclamation log, `data/queen_posted.json`, stays gitignored.
 
 If recent search returns HTTP 403, the app's X API plan is not allowing `GET /2/tweets/search/recent`. If it returns HTTP 429, the command stops and posts nothing. Either way the message says nothing was posted.
 
@@ -159,7 +159,26 @@ GitHub shows the **Run workflow** button only after this file is on the default 
 5. Leave the branch as **main**. Change **limit** only if you want a number other than 3.
 6. Click the green **Run workflow** button.
 
-Open the run and read the log. It prints the account check, the posts it would answer, and the drafted replies. Secrets stay in the environment and are not printed. A fresh Actions machine does not have your laptop's `data/queen_replies.json`, so the draft list can include posts you already answered locally. The search and an optional text-provider call still spend API credit. The write endpoint is not called.
+Open the run and read the log. It prints the account check, the posts it would answer, and the drafted replies. Secrets stay in the environment and are not printed. The dry run reads `data/queen_replies.json` from the branch you selected, and it does not update that file. The search and an optional text-provider call still spend API credit. The write endpoint is not called.
+
+### Post replies every day
+
+The file is `.github/workflows/queen-hashtag-replies.yml`. After this file is on `main`, GitHub runs it every day. It calls `python -m furbybots queen hashtag-replies` with no `--dry-run`, so the replies are published. Before it posts, the program still checks that the token is @QueenOfFurbies and refuses any other account.
+
+The cron is `15 1 * * *`, which is 01:15 UTC.
+
+- From early November through early March, Chicago is on Central Standard Time, and 01:15 UTC is **7:15 PM**.
+- From early March through early November, Chicago is on Central Daylight Time, and 01:15 UTC is **8:15 PM**.
+
+GitHub's scheduler uses UTC and does not move with daylight saving time. One cron cannot stay at 7:15 PM Chicago all year.
+
+You can also open **Actions → Queen of Furbies hashtag replies → Run workflow**. The **limit** input defaults to 3. That button posts for real.
+
+The job uses the same Actions secrets as the dry run. It does not print them. Two runs cannot overlap: a second start waits until the first has finished, and the first run is not cancelled in the middle of posting.
+
+When the file of answered posts changes, the job commits `data/queen_replies.json` and pushes it to the branch it checked out. The daily run checks out `main`, so the history lands on `main`. A cache was not used, because GitHub can evict a cache and the next run would answer the same posts again. The history file holds post ids and reply text, not tokens.
+
+For that push to succeed, the repository has to let GitHub Actions write to `main`. In **Settings → Actions → General → Workflow permissions**, choose **Read and write permissions**. If `main` has a rule that blocks pushes, allow `github-actions[bot]` to push, or the replies can go out and the history commit can fail.
 
 The poster reads `.env`, then `tokens/queen.env`, and leaves existing environment variables alone. After the auth helper, the dry run and the real post work without an extra `source` command.
 
@@ -235,6 +254,7 @@ The tests check post length, the closing crown, the absence of @mentions, the ac
 | `furbybots/queen/` | Voice, bundled posts, template, daily post, and hashtag replies. |
 | `tokens/queen.env` | Access token for @QueenOfFurbies. Gitignored. |
 | `data/queen_posted.json` | Lines already published. Gitignored. |
-| `data/queen_replies.json` | Posts already answered. Gitignored. |
-| `.github/workflows/queen-daily.yml` | Optional daily run. Schedule commented out. |
+| `data/queen_replies.json` | Posts already answered. Committed by the daily reply workflow. |
+| `.github/workflows/queen-daily.yml` | Optional daily proclamation. Schedule commented out. |
 | `.github/workflows/queen-hashtag-dry-run.yml` | Manual dry run of hashtag replies. No schedule. |
+| `.github/workflows/queen-hashtag-replies.yml` | Daily real hashtag replies, plus a manual run. |

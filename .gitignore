@@ -2,9 +2,12 @@
 .env.*
 !.env.example
 
-# Access tokens written by the auth helper, and the log of posts already sent.
+# Access tokens written by the auth helper, and the log of daily posts.
+# queen_replies.json is the exception: Actions commits it so a later run
+# does not answer the same post again.
 tokens/
-data/
+data/*
+!data/queen_replies.json
 
 # Python
 .venv/

@@ -1,0 +1,84 @@
+name: Queen of Furbies hashtag replies
+
+# Posts real replies. This file has a schedule.
+# 15 1 * * * is 01:15 UTC, which is 7:15 PM America/Chicago while Chicago
+# is on Central Standard Time (early November through early March).
+# While Chicago is on Central Daylight Time (early March through early
+# November), the same cron is 8:15 PM Chicago. GitHub cron does not follow
+# daylight saving time.
+# workflow_dispatch can post once by hand. The limit input defaults to 3.
+on:
+  schedule:
+    - cron: "15 1 * * *"
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: How many replies to post (1-10).
+        required: false
+        default: "3"
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: queen-hashtag-replies
+  cancel-in-progress: false
+
+jobs:
+  reply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: pip install .
+
+      - name: Post hashtag replies
+        id: replies
+        env:
+          REPLY_LIMIT: ${{ inputs.limit }}
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          QUEEN_ACCESS_TOKEN: ${{ secrets.QUEEN_ACCESS_TOKEN }}
+          QUEEN_ACCESS_TOKEN_SECRET: ${{ secrets.QUEEN_ACCESS_TOKEN_SECRET }}
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          limit="${REPLY_LIMIT:-3}"
+          case "$limit" in
+            ''|*[!0-9]*)
+              echo "limit must be a whole number from 1 to 10." >&2
+              exit 2
+              ;;
+          esac
+          if [ -n "$XAI_API_KEY" ]; then
+            echo "XAI_API_KEY is set. Reply text will be marked LLM."
+          elif [ -n "$OPENAI_API_KEY" ]; then
+            echo "OPENAI_API_KEY is set. Reply text will be marked LLM."
+          else
+            echo "No text-provider secret is set. Reply text will be marked template."
+          fi
+          python -m furbybots queen hashtag-replies --limit "$limit"
+
+      - name: Save reply history
+        if: steps.replies.outcome == 'success' || steps.replies.outcome == 'failure'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/queen_replies.json
+          if git diff --cached --quiet; then
+            echo "Reply history is unchanged."
+            exit 0
+          fi
+          git commit -m "Record Queen hashtag replies."
+          git fetch origin "$GITHUB_REF_NAME"
+          git rebase "origin/$GITHUB_REF_NAME"
+          git push origin "HEAD:$GITHUB_REF_NAME"

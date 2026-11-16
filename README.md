@@ -146,6 +146,21 @@ Answered post ids are stored in `data/queen_replies.json`, which is gitignored. 
 
 If recent search returns HTTP 403, the app's X API plan is not allowing `GET /2/tweets/search/recent`. If it returns HTTP 429, the command stops and posts nothing. Either way the message says nothing was posted.
 
+### Try a dry run from GitHub Actions
+
+The file is `.github/workflows/queen-hashtag-dry-run.yml`. It installs the package and runs `python -m furbybots queen hashtag-replies --dry-run`. The optional **limit** input defaults to 3. The workflow has no schedule, and the command always includes `--dry-run`, so this job does not post.
+
+GitHub shows the **Run workflow** button only after this file is on the default branch. Merge this pull request first. Then:
+
+1. On GitHub, open **Settings → Secrets and variables → Actions** and add `X_API_KEY`, `X_API_SECRET`, `QUEEN_ACCESS_TOKEN`, and `QUEEN_ACCESS_TOKEN_SECRET`. Optionally add `XAI_API_KEY` or `OPENAI_API_KEY`.
+2. Open the **Actions** tab.
+3. In the left sidebar, click **Queen of Furbies hashtag dry run**.
+4. Above the run list, click **Run workflow**.
+5. Leave the branch as **main**. Change **limit** only if you want a number other than 3.
+6. Click the green **Run workflow** button.
+
+Open the run and read the log. It prints the account check, the posts it would answer, and the drafted replies. Secrets stay in the environment and are not printed. A fresh Actions machine does not have your laptop's `data/queen_replies.json`, so the draft list can include posts you already answered locally. The search and an optional text-provider call still spend API credit. The write endpoint is not called.
+
 The poster reads `.env`, then `tokens/queen.env`, and leaves existing environment variables alone. After the auth helper, the dry run and the real post work without an extra `source` command.
 
 ## How the words are chosen
@@ -222,3 +237,4 @@ The tests check post length, the closing crown, the absence of @mentions, the ac
 | `data/queen_posted.json` | Lines already published. Gitignored. |
 | `data/queen_replies.json` | Posts already answered. Gitignored. |
 | `.github/workflows/queen-daily.yml` | Optional daily run. Schedule commented out. |
+| `.github/workflows/queen-hashtag-dry-run.yml` | Manual dry run of hashtag replies. No schedule. |

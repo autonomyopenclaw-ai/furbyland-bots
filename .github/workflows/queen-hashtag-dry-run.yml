@@ -1,0 +1,53 @@
+name: Queen of Furbies hashtag dry run
+
+# Manual test only. This file has no schedule.
+# The job always runs hashtag-replies with --dry-run, so it does not post.
+# The Run workflow button appears after this file is on the default branch.
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: How many replies to draft (1-10). Nothing is posted.
+        required: false
+        default: "3"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: queen-hashtag-dry-run
+  cancel-in-progress: false
+
+jobs:
+  dry-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: pip install .
+
+      - name: Draft hashtag replies without posting
+        env:
+          REPLY_LIMIT: ${{ inputs.limit }}
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          QUEEN_ACCESS_TOKEN: ${{ secrets.QUEEN_ACCESS_TOKEN }}
+          QUEEN_ACCESS_TOKEN_SECRET: ${{ secrets.QUEEN_ACCESS_TOKEN_SECRET }}
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          limit="${REPLY_LIMIT:-3}"
+          case "$limit" in
+            ''|*[!0-9]*)
+              echo "limit must be a whole number from 1 to 10." >&2
+              exit 2
+              ;;
+          esac
+          python -m furbybots queen hashtag-replies --dry-run --limit "$limit"

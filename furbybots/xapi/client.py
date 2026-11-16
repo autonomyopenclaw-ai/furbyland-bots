@@ -84,22 +84,33 @@ class XClient:
 
     def search_recent(self, query: str, *, max_results: int = 10) -> list[SearchPost]:
         """Return one page of recent posts. ``max_results`` is kept between 10 and 100."""
+        return self.search_page(query, max_results=max_results).posts
+
+    def search_page(
+        self,
+        query: str,
+        *,
+        max_results: int = 10,
+        next_token: str | None = None,
+    ) -> SearchPage:
+        """Return one page. Pass ``next_token`` from the previous page to continue."""
         bounded = min(100, max(10, max_results))
-        payload = self._request(
-            "GET",
-            f"{API_BASE}/tweets/search/recent",
-            params={
-                "query": query,
-                "max_results": bounded,
-                "tweet.fields": (
-                    "id,text,author_id,created_at,public_metrics,"
-                    "referenced_tweets,possibly_sensitive"
-                ),
-                "expansions": "author_id",
-                "user.fields": "id,username",
-            },
-        )
-        return _parse_search(payload)
+        params: dict[str, object] = {
+            "query": query,
+            "max_results": bounded,
+            "tweet.fields": (
+                "id,text,author_id,created_at,lang,public_metrics,"
+                "referenced_tweets,possibly_sensitive"
+            ),
+            "expansions": "author_id",
+            "user.fields": "id,username",
+        }
+        if next_token:
+            params["next_token"] = next_token
+        payload = self._request("GET", f"{API_BASE}/tweets/search/recent", params=params)
+        meta = payload.get("meta") if isinstance(payload.get("meta"), dict) else {}
+        token = str(meta.get("next_token") or "") or None
+        return SearchPage(posts=_parse_search(payload), next_token=token)
 
     def _request(self, method: str, url: str, **kwargs: object) -> dict:
         try:
@@ -193,6 +204,7 @@ class SearchPost:
     retweet: bool = False
     reply: bool = False
     sensitive: bool = False
+    lang: str = ""
 
 
 def _parse_search(payload: dict) -> list[SearchPost]:
@@ -238,9 +250,16 @@ def _parse_search(payload: dict) -> list[SearchPost]:
                 retweet="retweeted" in kinds or text.startswith("RT @"),
                 reply="replied_to" in kinds,
                 sensitive=bool(row.get("possibly_sensitive")),
+                lang=str(row.get("lang") or "").lower(),
             )
         )
     return posts
+
+
+@dataclass(frozen=True)
+class SearchPage:
+    posts: list[SearchPost]
+    next_token: str | None = None
 
 
 def _detail(response: requests.Response, secrets: list[str]) -> str:

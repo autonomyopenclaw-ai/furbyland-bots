@@ -17,6 +17,7 @@ Start with exactly one of these labels and a colon:
 Royal Decree, Royal Proclamation, Royal Weather Bulletin, Royal Harvest Report, A Royal Mystery, Royal Tour, Royal Investiture.
 
 Rules:
+- Write in English.
 - One post only. No title, no quotes, no preamble.
 - Under 260 characters.
 - Family-friendly. No politics, news, brands, current events, or links.

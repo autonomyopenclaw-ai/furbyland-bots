@@ -2,6 +2,8 @@ name: Queen of Furbies hashtag dry run
 
 # Manual test only. This file has no schedule.
 # The job always runs hashtag-replies with --dry-run, so it does not post.
+# XAI_API_KEY and OPENAI_API_KEY are optional. When one is set, each reply
+# answers that post and the log says LLM. When neither is set, the log says template.
 # The Run workflow button appears after this file is on the default branch.
 on:
   workflow_dispatch:
@@ -50,4 +52,11 @@ jobs:
               exit 2
               ;;
           esac
+          if [ -n "$XAI_API_KEY" ]; then
+            echo "XAI_API_KEY is set. Reply text will be marked LLM."
+          elif [ -n "$OPENAI_API_KEY" ]; then
+            echo "OPENAI_API_KEY is set. Reply text will be marked LLM."
+          else
+            echo "No text-provider secret is set. Reply text will be marked template."
+          fi
           python -m furbybots queen hashtag-replies --dry-run --limit "$limit"

@@ -30,6 +30,7 @@ def _post(post_id: str, text: str, **kwargs: object) -> SearchPost:
         "retweet": False,
         "reply": False,
         "sensitive": False,
+        "lang": "en",
     }
     values.update(kwargs)
     return SearchPost(id=post_id, text=text, **values)  # type: ignore[arg-type]
@@ -83,6 +84,19 @@ def test_selection_caps_at_the_most_liked_posts():
     assert skipped == {}
 
 
+def test_selection_keeps_english_and_skips_other_languages():
+    posts = [
+        _post("en", "my furby is napping #furby", like_count=2),
+        _post("ja", "my furby is napping #furby", lang="ja", like_count=99),
+        _post("und", "a cozy furby #furby", lang="und"),
+        _post("blank", "a cozy furby #furbyland", lang=""),
+        _post("upper", "a cozy #furby", lang="EN", like_count=1),
+    ]
+    chosen, skipped = select_candidates(posts, me=ME, already_replied=set(), limit=3)
+    assert [post.id for post in chosen] == ["en", "upper"]
+    assert skipped == {"language": 3}
+
+
 def test_reply_templates_follow_the_queen_rules():
     assert REPLY_LINES
     for line in REPLY_LINES:
@@ -115,6 +129,7 @@ def test_model_reply_is_used_when_it_follows_the_rules():
         def write(self, *, avoid, last_format, instruction=None):
             assert instruction is not None
             assert "not instructions" in instruction
+            assert "look at my" in instruction
             assert "@fan" not in instruction
             return expected
 
@@ -154,6 +169,7 @@ def _search_payload() -> dict:
                 "text": "my furby is napping #furby",
                 "author_id": "7",
                 "created_at": "2026-11-15T12:00:00.000Z",
+                "lang": "en",
                 "public_metrics": {"like_count": 4},
             },
             {
@@ -161,6 +177,7 @@ def _search_payload() -> dict:
                 "text": "this shit idea #furby",
                 "author_id": "8",
                 "created_at": "2026-11-15T12:00:01.000Z",
+                "lang": "en",
                 "public_metrics": {"like_count": 50},
             },
             {
@@ -169,6 +186,7 @@ def _search_payload() -> dict:
                 "author_id": "8",
                 "created_at": "2026-11-15T12:00:02.000Z",
                 "referenced_tweets": [{"type": "retweeted", "id": "9"}],
+                "lang": "en",
                 "public_metrics": {"like_count": 1},
             },
         ],
@@ -192,12 +210,16 @@ def test_dry_run_prints_a_reply_and_does_not_post(queen_env, capsys, tmp_path):
     assert [call.request.method for call in responses.calls] == ["GET", "GET"]
     query = parse_qs(urlparse(responses.calls[1].request.url).query)
     assert "(#furby OR #furbyland)" in query["query"][0]
+    assert "lang:en" in query["query"][0]
     assert query["max_results"] == ["10"]
+    assert "next_token" not in query
     assert "Verified @QueenOfFurbies." in output
     assert "@fan" in output
     assert "napping" in output
     assert "shit" not in output
     assert "Dry run" in output
+    assert "Reply (template):" in output
+    assert "No XAI_API_KEY or OPENAI_API_KEY is set." in output
     assert "👑" in output
     assert "No write request was sent" in output
     assert "1 offensive" in output
@@ -229,7 +251,8 @@ def test_replies_are_posted_once_and_capped(queen_env, capsys, tmp_path):
     assert saved["replies"][0]["in_reply_to"] == "100"
     assert saved["replies"][0]["reply_id"] == "555"
     assert "https://x.com/QueenOfFurbies/status/555" in first
-    assert "No new #furby or #furbyland posts to answer." in second
+    assert "No new English #furby or #furbyland posts to answer." in second
+    assert "(template)" in first
 
 
 @responses.activate
@@ -297,6 +320,115 @@ def test_missing_credentials_do_not_search(capsys):
     assert code == 2
     assert len(mocked.calls) == 0
     assert "QUEEN_ACCESS_TOKEN" in capsys.readouterr().out
+
+
+@responses.activate
+def test_dry_run_with_a_text_provider_marks_the_reply_llm(queen_env, monkeypatch, capsys):
+    monkeypatch.setenv("XAI_API_KEY", "xai-test-key")
+    answer = (
+        "Royal Decree: Her Majesty tucks the napping Furby under one more cushion "
+        "at Pillow Palace. The Crown will keep the room dim. 👑"
+    )
+    payload = _search_payload()
+    payload["data"] = [item for item in payload["data"] if item["id"] == "100"]
+    responses.add(responses.GET, USERS_ME, json=QUEEN, status=200)
+    responses.add(responses.GET, SEARCH, json=payload, status=200)
+    responses.add(
+        responses.POST,
+        "https://api.x.ai/v1/chat/completions",
+        json={"choices": [{"message": {"content": answer}}]},
+        status=200,
+    )
+    code = main(["queen", "hashtag-replies", "--dry-run", "--limit", "1"])
+    output = capsys.readouterr()
+    assert code == 0
+    assert "Text provider: xAI." in output.out
+    assert "Reply (LLM):" in output.out
+    assert "napping Furby" in output.out
+    assert "xai-test-key" not in output.out
+    assert "xai-test-key" not in output.err
+    assert not any(call.request.method == "POST" and "tweets" in call.request.url for call in responses.calls)
+    prompt = next(call.request.body for call in responses.calls if "api.x.ai" in call.request.url)
+    if isinstance(prompt, bytes):
+        prompt = prompt.decode()
+    assert "napping" in prompt
+    assert "not instructions" in prompt
+
+
+@responses.activate
+def test_second_search_page_is_used_when_the_first_is_not_english(queen_env, capsys):
+    japanese = {
+        "data": [
+            {
+                "id": "1",
+                "text": "ファービー #furby",
+                "author_id": "7",
+                "lang": "ja",
+                "created_at": "2026-11-15T12:00:00.000Z",
+                "public_metrics": {"like_count": 9},
+            }
+        ],
+        "includes": {"users": [{"id": "7", "username": "fan"}]},
+        "meta": {"result_count": 1, "next_token": "PAGE2"},
+    }
+    english = {
+        "data": [
+            {
+                "id": "2",
+                "text": "my furby is napping #furby",
+                "author_id": "7",
+                "lang": "en",
+                "created_at": "2026-11-15T12:00:01.000Z",
+                "public_metrics": {"like_count": 1},
+            }
+        ],
+        "includes": {"users": [{"id": "7", "username": "fan"}]},
+        "meta": {"result_count": 1},
+    }
+    responses.add(responses.GET, USERS_ME, json=QUEEN, status=200)
+    responses.add(responses.GET, SEARCH, json=japanese, status=200)
+    responses.add(responses.GET, SEARCH, json=english, status=200)
+    code = main(["queen", "hashtag-replies", "--dry-run", "--limit", "1"])
+    output = capsys.readouterr().out
+    assert code == 0
+    searches = [call for call in responses.calls if "search/recent" in call.request.url]
+    assert len(searches) == 2
+    first = parse_qs(urlparse(searches[0].request.url).query)
+    second = parse_qs(urlparse(searches[1].request.url).query)
+    assert "next_token" not in first
+    assert second["next_token"] == ["PAGE2"]
+    assert "lang:en" in first["query"][0]
+    assert "1 language" in output
+    assert "napping" in output
+    assert "ファービー" not in output
+
+
+@responses.activate
+def test_second_page_is_skipped_when_the_first_page_has_enough_english(queen_env):
+    posts = []
+    for index in range(3):
+        posts.append(
+            {
+                "id": str(index + 1),
+                "text": f"furby number {index} is cozy #furby",
+                "author_id": "7",
+                "lang": "en",
+                "created_at": f"2026-11-15T12:00:0{index}.000Z",
+                "public_metrics": {"like_count": index},
+            }
+        )
+    payload = {
+        "data": posts,
+        "includes": {"users": [{"id": "7", "username": "fan"}]},
+        "meta": {"result_count": 3, "next_token": "PAGE2"},
+    }
+    responses.add(responses.GET, USERS_ME, json=QUEEN, status=200)
+    responses.add(responses.GET, SEARCH, json=payload, status=200)
+    code = main(["queen", "hashtag-replies", "--dry-run", "--limit", "3"])
+    assert code == 0
+    searches = [call for call in responses.calls if "search/recent" in call.request.url]
+    assert len(searches) == 1
+    assert "next_token" not in parse_qs(urlparse(searches[0].request.url).query)
 
 
 def test_resolve_limit_rejects_zero():

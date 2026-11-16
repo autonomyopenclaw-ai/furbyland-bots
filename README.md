@@ -136,11 +136,11 @@ python -m furbybots queen hashtag-replies --dry-run
 python -m furbybots queen hashtag-replies
 ```
 
-It checks that the token is @QueenOfFurbies, then runs one recent search for `#furby` OR `#furbyland`. Retweets, replies, and her own posts are left out of that search, and the program checks again locally. It skips posts she has already answered, plus posts that are empty, offensive, spam, political, or trying to give her new instructions. From what remains it answers the most-liked few.
+It checks that the token is @QueenOfFurbies, then searches recent posts for `#furby` OR `#furbyland` with `lang:en`. Retweets, replies, and her own posts are left out of that search. The program checks again locally and skips anything whose language is not English, plus posts she has already answered, and posts that are empty, offensive, spam, political, or trying to give her new instructions. From what remains it answers the most-liked few. Replies are always in English.
 
-The default is 3 replies. `--limit` can set 1 through 10, or you can set `QUEEN_REPLY_LIMIT`. One run costs one account check, one search page of 10 posts (the smallest page X allows), and at most that many replies. It does not request a second page.
+The default is 3 replies. `--limit` can set 1 through 10, or you can set `QUEEN_REPLY_LIMIT`. One run costs one account check and one search page of 10 posts. It requests a second page of 10 only when the first page does not already contain enough English posts. It never requests a third page.
 
-A dry run prints each candidate and the reply it would send. It does not call the write endpoint, and it does not mark those posts as answered, so the real run can still answer them. With no text-provider key, the reply is a template in the same royal voice. With `XAI_API_KEY` or `OPENAI_API_KEY`, the reply is drafted from that provider and checked against the same rules: one line, under 280 characters, no @mentions, ending in 👑.
+A dry run prints each candidate and the reply it would send, and the log says `template` or `LLM` for each one. It does not call the write endpoint, and it does not mark those posts as answered, so the real run can still answer them. With no text-provider key, the reply is a template in the same royal voice, and the log says so. With `XAI_API_KEY` or `OPENAI_API_KEY`, the reply answers what that post said, in the Queen's voice, and the log says LLM. The same rules still apply: one line, under 280 characters, no @mentions, ending in 👑.
 
 Answered post ids are stored in `data/queen_replies.json`, which is gitignored. A later run will not reply to those posts again.
 
@@ -148,7 +148,7 @@ If recent search returns HTTP 403, the app's X API plan is not allowing `GET /2/
 
 ### Try a dry run from GitHub Actions
 
-The file is `.github/workflows/queen-hashtag-dry-run.yml`. It installs the package and runs `python -m furbybots queen hashtag-replies --dry-run`. The optional **limit** input defaults to 3. The workflow has no schedule, and the command always includes `--dry-run`, so this job does not post.
+The file is `.github/workflows/queen-hashtag-dry-run.yml`. It installs the package and runs `python -m furbybots queen hashtag-replies --dry-run`. The optional **limit** input defaults to 3. The workflow has no schedule, and the command always includes `--dry-run`, so this job does not post. It passes `XAI_API_KEY` and `OPENAI_API_KEY` through when those secrets exist. The log names which secret is present, without printing the secret, and each drafted reply is marked `LLM` or `template`.
 
 GitHub shows the **Run workflow** button only after this file is on the default branch. Merge this pull request first. Then:
 

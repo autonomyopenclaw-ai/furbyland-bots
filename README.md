@@ -163,18 +163,18 @@ GitHub shows the **Run workflow** button only after this file is on the default 
 
 Open the run and read the log. It prints the account check, the posts it would answer, and the drafted replies. Secrets stay in the environment and are not printed. The dry run reads `data/queen_replies.json` from the branch you selected, and it does not update that file. The search and an optional text-provider call still spend API credit. The write endpoint is not called.
 
-### Post replies every day
+### Post replies by hand
 
-The file is `.github/workflows/queen-hashtag-replies.yml`. After this file is on `main`, GitHub runs it every day. It calls `python -m furbybots queen hashtag-replies` with no `--dry-run`, so the replies are published. Before it posts, the program still checks that the token is @QueenOfFurbies and refuses any other account.
+The file is `.github/workflows/queen-hashtag-replies.yml`. Its daily schedule is commented out so GitHub Actions does not spend X API credits. It still calls `python -m furbybots queen hashtag-replies` with no `--dry-run` when you run it by hand, so that run publishes replies. Before it posts, the program still checks that the token is @QueenOfFurbies and refuses any other account.
 
-The cron is `15 1 * * *`, which is 01:15 UTC.
+The commented cron is `15 1 * * *`, which is 01:15 UTC. Uncomment `schedule:` in that file to turn the daily run back on.
 
 - From early November through early March, Chicago is on Central Standard Time, and 01:15 UTC is **7:15 PM**.
 - From early March through early November, Chicago is on Central Daylight Time, and 01:15 UTC is **8:15 PM**.
 
 GitHub's scheduler uses UTC and does not move with daylight saving time. One cron cannot stay at 7:15 PM Chicago all year.
 
-You can also open **Actions → Queen of Furbies hashtag replies → Run workflow**. The **limit** input defaults to 3. That button posts for real.
+Open **Actions → Queen of Furbies hashtag replies → Run workflow**. The **limit** input defaults to 3. That button posts for real. Nothing runs until someone clicks it.
 
 The job uses the same Actions secrets as the dry run. It does not print them. Two runs cannot overlap: a second start waits until the first has finished, and the first run is not cancelled in the middle of posting.
 
@@ -261,4 +261,4 @@ The tests check post length, the closing crown, the absence of @mentions, the ac
 | `data/queen_replies.json` | Posts already answered. Committed by the daily reply workflow. |
 | `.github/workflows/queen-daily.yml` | Optional daily proclamation. Schedule commented out. |
 | `.github/workflows/queen-hashtag-dry-run.yml` | Manual dry run of hashtag replies. No schedule. |
-| `.github/workflows/queen-hashtag-replies.yml` | Daily real hashtag replies, plus a manual run. |
+| `.github/workflows/queen-hashtag-replies.yml` | Manual real hashtag replies. Schedule paused. |

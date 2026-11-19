@@ -112,6 +112,52 @@ class XClient:
         token = str(meta.get("next_token") or "") or None
         return SearchPage(posts=_parse_search(payload), next_token=token)
 
+    def mentions_page(
+        self,
+        user_id: str,
+        *,
+        max_results: int = 10,
+        pagination_token: str | None = None,
+    ) -> SearchPage:
+        """One page of posts that mention ``user_id``. The smallest page is 5."""
+        bounded = min(100, max(5, max_results))
+        params: dict[str, object] = {
+            "max_results": bounded,
+            "tweet.fields": (
+                "id,text,author_id,created_at,lang,conversation_id,public_metrics,"
+                "referenced_tweets,possibly_sensitive"
+            ),
+            "expansions": "author_id",
+            "user.fields": "id,username",
+        }
+        if pagination_token:
+            params["pagination_token"] = pagination_token
+        payload = self._request(
+            "GET",
+            f"{API_BASE}/users/{user_id}/mentions",
+            params=params,
+        )
+        meta = payload.get("meta") if isinstance(payload.get("meta"), dict) else {}
+        token = str(meta.get("next_token") or "") or None
+        return SearchPage(posts=_parse_search(payload), next_token=token)
+
+    def lookup_tweets(self, ids: list[str]) -> list[SearchPost]:
+        """Look up posts by id. Used to see who started a conversation."""
+        cleaned = [str(item) for item in ids if str(item)][:100]
+        if not cleaned:
+            return []
+        payload = self._request(
+            "GET",
+            f"{API_BASE}/tweets",
+            params={
+                "ids": ",".join(cleaned),
+                "tweet.fields": "id,text,author_id,conversation_id",
+                "expansions": "author_id",
+                "user.fields": "id,username",
+            },
+        )
+        return _parse_search(payload)
+
     def _request(self, method: str, url: str, **kwargs: object) -> dict:
         try:
             response = self.session.request(
@@ -145,6 +191,29 @@ class XClient:
         detail = _detail(response, self._secrets)
         status = response.status_code
         searching = "/tweets/search/" in url
+        mentions = "/mentions" in url
+        if status == 429 and mentions:
+            reset = response.headers.get("x-rate-limit-reset", "")
+            wait = (
+                f" The limit resets at unix time {reset}."
+                if reset
+                else " Wait and try again later."
+            )
+            return XApiError(
+                429,
+                "Reading mentions was rate limited (HTTP 429)."
+                + wait
+                + " Nothing was posted."
+                + detail,
+            )
+        if status == 403 and mentions:
+            return XApiError(
+                403,
+                "Reading mentions was refused (HTTP 403). "
+                "GET /2/users/:id/mentions needs to be available on this app's "
+                "X API plan. Nothing was posted."
+                + detail,
+            )
         if status == 429 and searching:
             reset = response.headers.get("x-rate-limit-reset", "")
             wait = (
@@ -182,6 +251,15 @@ class XClient:
                 "and this account's access token. Run the auth helper again if "
                 "the token is old." + detail,
             )
+        if status == 403 and _reply_requires_mention(response.text or ""):
+            return XApiError(
+                403,
+                "X will not accept this reply. This account can only reply to "
+                "posts that mention it, or posts it wrote. The token was left "
+                "unchanged."
+                + detail,
+                reply_not_permitted=True,
+            )
         if status == 403:
             return XApiError(
                 403,
@@ -205,6 +283,7 @@ class SearchPost:
     reply: bool = False
     sensitive: bool = False
     lang: str = ""
+    conversation_id: str = ""
 
 
 def _parse_search(payload: dict) -> list[SearchPost]:
@@ -251,6 +330,7 @@ def _parse_search(payload: dict) -> list[SearchPost]:
                 reply="replied_to" in kinds,
                 sensitive=bool(row.get("possibly_sensitive")),
                 lang=str(row.get("lang") or "").lower(),
+                conversation_id=str(row.get("conversation_id") or ""),
             )
         )
     return posts
@@ -260,6 +340,11 @@ def _parse_search(payload: dict) -> list[SearchPost]:
 class SearchPage:
     posts: list[SearchPost]
     next_token: str | None = None
+
+
+def _reply_requires_mention(body: str) -> bool:
+    lowered = body.lower()
+    return "mentioned" in lowered and "author" in lowered
 
 
 def _detail(response: requests.Response, secrets: list[str]) -> str:

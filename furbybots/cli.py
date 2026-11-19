@@ -43,7 +43,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     hashtags = queen_sub.add_parser(
         "hashtag-replies",
-        help="Reply to a few recent posts tagged #furby or #furbyland.",
+        help="Reply to a few recent posts that mention @QueenOfFurbies.",
     )
     hashtags.add_argument(
         "--dry-run",

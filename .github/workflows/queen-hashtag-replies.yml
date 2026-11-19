@@ -1,6 +1,7 @@
 name: Queen of Furbies hashtag replies
 
-# Posts real replies. This file has a schedule.
+# Posts real replies to mentions of @QueenOfFurbies. This file has a schedule.
+# Plain hashtag posts are not a reply source.
 # 15 1 * * * is 01:15 UTC, which is 7:15 PM America/Chicago while Chicago
 # is on Central Standard Time (early November through early March).
 # While Chicago is on Central Daylight Time (early March through early

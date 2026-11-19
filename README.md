@@ -23,11 +23,11 @@ The choose-your-own-adventure account lives in its own repository. The pieces to
 - The app is `X_API_KEY` and `X_API_SECRET`.
 - Each account is `<NAME>_ACCESS_TOKEN` and `<NAME>_ACCESS_TOKEN_SECRET`. For this bot the prefix is `QUEEN`.
 - `python -m xapi.auth --account <name> --expect <username>` runs the same PIN flow.
-- `XClient` checks `GET /2/users/me`, reads one page with `search_recent` (`GET /2/tweets/search/recent`), and publishes with `POST /2/tweets`.
+- `XClient` checks `GET /2/users/me`, reads mentions with `GET /2/users/:id/mentions`, and publishes with `POST /2/tweets`.
 - `create_tweet(..., in_reply_to="post id")` replies in a thread.
-- A 403 or 429 from recent search is reported on its own, and nothing is posted.
+- A 403 or 429 while reading mentions is reported on its own, and nothing is posted. A 403 that says a reply is allowed only where the account is mentioned is skipped for that one post.
 
-`search_recent` is the one-page lookup the Queen uses for `#furby` and `#furbyland`.
+The Queen replies to mentions of @QueenOfFurbies, including `#furby` and `#furbyland` posts that tag her.
 
 ## What you need
 
@@ -129,22 +129,24 @@ The text is appended to `data/queen_posted.json`, which is gitignored. Later run
 
 ## Reply to #furby and #furbyland
 
-This command is separate from the daily proclamation. A daily run posts the replies; the dry-run workflow does not.
+This command is separate from the daily proclamation. A daily run posts the replies; the dry-run workflow does not. It answers posts that mention @QueenOfFurbies. A hashtag alone is not enough, because X only accepts a reply when she is mentioned or she wrote the post.
 
 ```bash
 python -m furbybots queen hashtag-replies --dry-run
 python -m furbybots queen hashtag-replies
 ```
 
-It checks that the token is @QueenOfFurbies, then searches recent posts for `#furby` OR `#furbyland` with `lang:en`. Retweets, replies, and her own posts are left out of that search. The program checks again locally and skips anything whose language is not English, plus posts she has already answered, and posts that are empty, offensive, spam, political, or trying to give her new instructions. From what remains it answers the most-liked few. Replies are always in English.
+It checks that the token is @QueenOfFurbies, then reads her mentions with `GET /2/users/:id/mentions`. A post is eligible only when its text mentions @QueenOfFurbies. Posts tagged `#furby` or `#furbyland` are included when they also mention her. The program skips her own posts, retweets, anything that is not English, posts she has already answered, and posts that are empty, offensive, spam, political, or trying to give her new instructions. It also skips a mention that is a reply inside a conversation she started, because another bot already answers those threads. From what remains it answers the most-liked few. Replies are always in English.
 
-The default is 3 replies. `--limit` can set 1 through 10, or you can set `QUEEN_REPLY_LIMIT`. One run costs one account check and one search page of 10 posts. It requests a second page of 10 only when the first page does not already contain enough English posts. It never requests a third page.
+The default is 3 replies. `--limit` can set 1 through 10, or you can set `QUEEN_REPLY_LIMIT`. One run costs one account check and one page of 10 mentions. It requests a second page of 10 only when the first page does not already contain enough posts to answer. If any of those mentions are replies, it looks up the start of those conversations once. It never requests a third page.
+
+If X refuses one reply with “you can only reply to posts where you are mentioned or are the author,” that post is recorded and skipped. The token is not the problem, and the rest of the run continues.
 
 A dry run prints each candidate and the reply it would send, and the log says `template` or `LLM` for each one. It does not call the write endpoint, and it does not mark those posts as answered, so the real run can still answer them. With no text-provider key, the reply is a template in the same royal voice, and the log says so. With `XAI_API_KEY` or `OPENAI_API_KEY`, the reply answers what that post said, in the Queen's voice, and the log says LLM. The same rules still apply: one line, under 280 characters, no @mentions, ending in 👑.
 
 Answered post ids are stored in `data/queen_replies.json`. That file is kept in git. The daily workflow commits it back to the branch it ran on, so the next run can see which posts were already answered. The daily proclamation log, `data/queen_posted.json`, stays gitignored.
 
-If recent search returns HTTP 403, the app's X API plan is not allowing `GET /2/tweets/search/recent`. If it returns HTTP 429, the command stops and posts nothing. Either way the message says nothing was posted.
+If reading mentions returns HTTP 403, the app's X API plan is not allowing `GET /2/users/:id/mentions`. If it returns HTTP 429, the command stops and posts nothing. Either way the message says nothing was posted. A 403 on one individual reply, the "mentioned or are the author" error, does not stop the run and does not mean the token should be replaced.
 
 ### Try a dry run from GitHub Actions
 
@@ -242,7 +244,9 @@ The tests check post length, the closing crown, the absence of @mentions, the ac
 
 **429 when posting.** X rate limited the app. The post was not recorded. Wait until the time printed in the message, then run the command again.
 
-**403 or 429 on hashtag replies.** Recent search was refused or rate limited. The command posts nothing. A 403 means `GET /2/tweets/search/recent` is not available to this app. A 429 means wait for the reset time in the message.
+**403 or 429 while reading mentions.** The mentions endpoint was refused or rate limited. The command posts nothing. A 429 means wait for the reset time in the message.
+
+**403 on one reply.** X said the account can only reply where it is mentioned or where it is the author. That one post is recorded and skipped. Later mentions in the same run are still answered. Do not regenerate the token for this error.
 
 **The username is not @QueenOfFurbies.** The browser was signed in as a different account. Sign out, sign in as @QueenOfFurbies, and run the auth helper again.
 

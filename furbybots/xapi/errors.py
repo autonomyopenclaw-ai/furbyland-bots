@@ -13,9 +13,10 @@ class ConfigError(Exception):
 class XApiError(Exception):
     """X returned an error, or the response could not be used."""
 
-    def __init__(self, status_code: int, message: str) -> None:
+    def __init__(self, status_code: int, message: str, *, reply_not_permitted: bool = False) -> None:
         super().__init__(message)
         self.status_code = status_code
+        self.reply_not_permitted = reply_not_permitted
 
 
 class AccountMismatch(Exception):

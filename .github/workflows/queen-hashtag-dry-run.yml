@@ -2,6 +2,7 @@ name: Queen of Furbies hashtag dry run
 
 # Manual test only. This file has no schedule.
 # The job always runs hashtag-replies with --dry-run, so it does not post.
+# The command answers mentions of @QueenOfFurbies, not plain hashtag posts.
 # XAI_API_KEY and OPENAI_API_KEY are optional. When one is set, each reply
 # answers that post and the log says LLM. When neither is set, the log says template.
 # The Run workflow button appears after this file is on the default branch.

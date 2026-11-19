@@ -1,7 +1,8 @@
 name: Queen of Furbies hashtag replies
 
-# Posts real replies to mentions of @QueenOfFurbies. This file has a schedule.
+# Posts real replies to mentions of @QueenOfFurbies.
 # Plain hashtag posts are not a reply source.
+# The daily schedule is commented out to save X API credits.
 # 15 1 * * * is 01:15 UTC, which is 7:15 PM America/Chicago while Chicago
 # is on Central Standard Time (early November through early March).
 # While Chicago is on Central Daylight Time (early March through early
@@ -9,8 +10,9 @@ name: Queen of Furbies hashtag replies
 # daylight saving time.
 # workflow_dispatch can post once by hand. The limit input defaults to 3.
 on:
-  schedule:
-    - cron: "15 1 * * *"
+  # Paused to save X API credits.
+  # schedule:
+  #   - cron: "15 1 * * *"
   workflow_dispatch:
     inputs:
       limit:

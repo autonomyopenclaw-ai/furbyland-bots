@@ -56,10 +56,24 @@ def test_hashtag_workflow_is_a_manual_dry_run():
             assert "--dry-run" in stripped
 
 
-def test_daily_hashtag_replies_are_scheduled_and_real():
+def test_no_workflow_calls_x_on_a_schedule():
+    workflows = ROOT / ".github" / "workflows"
+    names = sorted(path.name for path in workflows.glob("*.yml"))
+    assert names == [
+        "queen-daily.yml",
+        "queen-hashtag-dry-run.yml",
+        "queen-hashtag-replies.yml",
+    ]
+    for path in workflows.glob("*.yml"):
+        _assert_no_active_schedule(path.read_text(encoding="utf-8"))
+
+
+def test_hashtag_replies_schedule_is_paused():
     text = (ROOT / ".github" / "workflows" / "queen-hashtag-replies.yml").read_text(encoding="utf-8")
     assert "workflow_dispatch" in text
+    assert "Paused to save X API credits." in text
     assert 'cron: "15 1 * * *"' in text
+    _assert_no_active_schedule(text)
     assert "contents: write" in text
     assert "queen-hashtag-replies" in text
     assert "cancel-in-progress: false" in text
